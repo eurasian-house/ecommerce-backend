@@ -2,10 +2,10 @@
   "name": "server",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +16,10 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "razorpay": "^2.9.6"
+    "razorpay": "^2.9.6",
+    "xmlbuilder2": "^4.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }
