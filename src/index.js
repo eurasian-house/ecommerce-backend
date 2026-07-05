@@ -7,6 +7,7 @@ const express = require("express");
 const corsMiddleware = require("./middleware/cors");
 
 const razorpayRoutes = require("./routes/payments/razorpay");
+const paypalRoutes = require("./routes/payments/paypal");
 
 const app = express();
 
@@ -20,8 +21,8 @@ app.get("/", (req, res) => {
   res.send("Server OK");
 });
 
-// Legacy endpoints (to avoid changing frontend today)
 app.use("/", razorpayRoutes);
+app.use("/", paypalRoutes);
 
 const PORT = process.env.PORT || 5050;
 
