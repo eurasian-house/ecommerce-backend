@@ -16,6 +16,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "mjml": "^5.4.0",
+    "nodemailer": "^9.0.3",
     "razorpay": "^2.9.6",
     "xmlbuilder2": "^4.0.3"
   },

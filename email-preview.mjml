@@ -1,0 +1,361 @@
+
+<mjml>
+
+  <mj-head>
+
+    <mj-title>Order Confirmed</mj-title>
+
+    <mj-preview>Your order f8f29cf0-8eb2-40cf-a97d-56b3d8e071b7 has been confirmed.</mj-preview>
+
+    <mj-attributes>
+
+      <mj-all
+        font-family="Arial, Helvetica, sans-serif"
+      />
+
+      <mj-body
+        background-color="#FAF8F5"
+      />
+
+      <mj-section
+        padding="0"
+      />
+
+      <mj-column
+        padding="0"
+      />
+
+      <mj-text
+        color="#2D2D2D"
+        font-size="16px"
+        line-height="28px"
+        padding="0"
+      />
+
+      <mj-button
+        background-color="#111111"
+        color="#FFFFFF"
+        border-radius="8px"
+        font-size="15px"
+        font-weight="600"
+        padding="14px 28px"
+      />
+
+    </mj-attributes>
+
+  </mj-head>
+
+  <mj-body background-color="#FAF8F5">
+
+    
+
+    
+<mj-section
+  background-color="#FAF8F5"
+  padding="40px 32px 24px"
+>
+
+  <mj-column>
+
+    <mj-text
+      align="center"
+      font-family="Georgia, 'Times New Roman', serif"
+      font-size="30px"
+      font-weight="700"
+      color="#111111"
+      letter-spacing="2px"
+      padding="0"
+    >
+      EURASIAN HOUSE
+    </mj-text>
+
+    <mj-text
+      align="center"
+      font-size="14px"
+      color="#666666"
+      letter-spacing="1px"
+      padding="8px 0 0"
+    >
+      Luxury Handcrafted Rugs
+    </mj-text>
+
+    <mj-divider
+      border-color="#C9A45C"
+      border-width="2px"
+      width="120px"
+      padding="24px 0 0"
+    />
+
+  </mj-column>
+
+</mj-section>
+
+
+      <mj-section background-color="#FFFFFF" padding="32px 24px">
+        <mj-column>
+
+          
+<mj-text
+  align="left"
+  font-family="Georgia, 'Times New Roman', serif"
+  font-size="30px"
+  font-weight="700"
+  line-height="40px"
+  color="#111111"
+  padding="0 0 16px"
+>
+  Your order is confirmed 🎉
+</mj-text>
+
+
+          
+<mj-text
+  align="left"
+  font-family="Arial, Helvetica, sans-serif"
+  font-size="16px"
+  line-height="28px"
+  color="#666666"
+  padding="0 0 20px"
+>
+  Hello <strong>Mohd Saquib Ansari</strong>,<br><br>
+Thank you for choosing Eurasian House.<br><br>
+Your order has been successfully placed. Our artisans will begin preparing your rug shortly.
+</mj-text>
+
+
+        </mj-column>
+      </mj-section>
+
+      
+<mj-section
+  background-color="#FFFFFF"
+  padding="28px 24px"
+>
+
+  <mj-column>
+
+    <mj-text
+      font-family="Georgia, 'Times New Roman', serif"
+      font-size="22px"
+      font-weight="700"
+      color="#111111"
+      padding="0 0 18px"
+    >
+      Order Details
+    </mj-text>
+
+    
+<mj-text
+  font-family="Arial, Helvetica, sans-serif"
+  font-size="15px"
+  line-height="24px"
+  color="#2D2D2D"
+  padding="6px 0"
+>
+  <strong>Order:</strong> f8f29cf0-8eb2-40cf-a97d-56b3d8e071b7
+</mj-text>
+
+
+    
+<mj-text
+  font-family="Arial, Helvetica, sans-serif"
+  font-size="15px"
+  line-height="24px"
+  color="#2D2D2D"
+  padding="6px 0"
+>
+  <strong>Payment:</strong> Razorpay
+</mj-text>
+
+
+    
+<mj-text
+  font-family="Arial, Helvetica, sans-serif"
+  font-size="15px"
+  line-height="24px"
+  color="#2D2D2D"
+  padding="6px 0"
+>
+  <strong>Placed On:</strong> July 8, 2026
+</mj-text>
+
+
+    
+<mj-text
+  font-family="Arial, Helvetica, sans-serif"
+  font-size="15px"
+  line-height="24px"
+  color="#2D2D2D"
+  padding="6px 0"
+>
+  <strong>Estimated Delivery:</strong> August 14, 2026
+</mj-text>
+
+
+  </mj-column>
+
+</mj-section>
+
+
+      
+<mj-section
+  background-color="#FFFFFF"
+  padding="20px 24px"
+>
+
+  <mj-column width="90px">
+
+    <mj-image
+      src="https://res.cloudinary.com/dfbzqjwss/image/upload/f_auto,q_auto/v1774888316/udkxhkpjpq85cx8e03st.png"
+      width="80px"
+      padding="0"
+      border-radius="6px"
+    />
+
+  </mj-column>
+
+  <mj-column>
+
+    <mj-text
+      font-family="Georgia, 'Times New Roman', serif"
+      font-size="18px"
+      font-weight="700"
+      color="#111111"
+      padding="0 0 8px"
+    >
+      Honeycomb Wool Rug | Hand Tufted Hexagon Colourful Geometric Area Carpet | Modern Living Room Decor
+    </mj-text>
+
+    <mj-text
+      color="#666666"
+      font-size="14px"
+      line-height="22px"
+      padding="2px 0"
+    >
+      <strong>Color:</strong> Maroon
+    </mj-text>
+
+    <mj-text
+      color="#666666"
+      font-size="14px"
+      line-height="22px"
+      padding="2px 0"
+    >
+      <strong>Size:</strong> 2x2 ft
+    </mj-text>
+
+    <mj-text
+      color="#666666"
+      font-size="14px"
+      line-height="22px"
+      padding="2px 0"
+    >
+      <strong>Quantity:</strong> 1
+    </mj-text>
+
+    <mj-text
+      font-size="18px"
+      font-weight="700"
+      color="#111111"
+      padding="12px 0 0"
+    >
+      $3960.00
+    </mj-text>
+
+  </mj-column>
+
+</mj-section>
+
+<mj-section padding="0">
+  <mj-column>
+    <mj-divider
+      border-color="#ECECEC"
+      border-width="1px"
+    />
+  </mj-column>
+</mj-section>
+
+
+      <mj-section background-color="#FFFFFF" padding="0 24px 32px">
+        <mj-column>
+
+          
+<mj-button
+  href="https://eurasianrugs.com/account/orders/f8f29cf0-8eb2-40cf-a97d-56b3d8e071b7"
+  align="center"
+  background-color="#111111"
+  color="#FFFFFF"
+  font-size="15px"
+  font-weight="600"
+  border-radius="8px"
+  inner-padding="14px 28px"
+>
+  View My Order
+</mj-button>
+
+
+        </mj-column>
+      </mj-section>
+
+      
+<mj-section
+  background-color="#FAF8F5"
+  padding="32px"
+>
+
+  <mj-column>
+
+    <mj-divider
+      border-color="#ECECEC"
+      border-width="1px"
+      padding="0 0 24px"
+    />
+
+    <mj-text
+      align="center"
+      font-size="18px"
+      font-weight="600"
+      color="#111111"
+      padding="0"
+    >
+      Need Help?
+    </mj-text>
+
+    <mj-text
+      align="center"
+      color="#666666"
+      font-size="15px"
+      padding="12px 0 0"
+    >
+      contact@eurasianrugs.com
+    </mj-text>
+
+    <mj-text
+      align="center"
+      color="#666666"
+      font-size="15px"
+      padding="4px 0 0"
+    >
+      https://eurasianrugs.com
+    </mj-text>
+
+    <mj-text
+      align="center"
+      color="#666666"
+      font-size="13px"
+      padding="24px 0 0"
+      line-height="22px"
+    >
+      © 2026 Eurasian House<br/>
+      Bhadohi, Uttar Pradesh, India
+    </mj-text>
+
+  </mj-column>
+
+</mj-section>
+
+    
+
+  </mj-body>
+
+</mjml>

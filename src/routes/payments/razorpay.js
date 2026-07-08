@@ -1,8 +1,17 @@
+const {
+  sendOrderConfirmationEmail,
+  sendAdminNewOrderEmail,
+} = require("../../services/orderEmailService");
+
 const express = require("express");
 const crypto = require("crypto");
 
 const razorpay = require("../../config/razorpay");
 const supabase = require("../../config/supabase");
+
+// const {
+//   sendOrderConfirmationEmail,
+// } = require("../../services/orderEmailService");
 
 const router = express.Router();
 
@@ -17,15 +26,21 @@ router.post("/create-razorpay-order", async (req, res) => {
 
     const order = await razorpay.orders.create({
       amount: amount * 100,
-      currency: "INR",
+      currency: "USD",
       receipt: orderId,
     });
 
     return res.json(order);
   } catch (err) {
-    return res.status(403).json({
-      error: "Razorpay failed",
-      message: err?.error?.description || err.message,
+    console.error("Razorpay Error:", err);
+
+    if (err.error) {
+      console.error("Razorpay Response:", err.error);
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: err.error || err.message,
     });
   }
 });
@@ -80,11 +95,25 @@ router.post("/verify-payment", async (req, res) => {
       return res.status(500).json({ success: false });
     }
 
+    // ✅ Send confirmation email
+    try {
+      await sendOrderConfirmationEmail(orderId);
+      await sendAdminNewOrderEmail(orderId);
+    } catch (emailError) {
+      console.error(
+        "Order confirmation email failed:",
+        emailError
+      );
+    }
+
     return res.json({ success: true });
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ success: false });
+
+    return res.status(500).json({
+      success: false,
+    });
   }
 });
 

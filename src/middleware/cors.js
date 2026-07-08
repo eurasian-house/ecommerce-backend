@@ -14,6 +14,6 @@ module.exports = cors({
 
     callback(new Error("Not allowed by CORS"));
   },
-  methods: ["GET", "POST"],
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
   credentials: true,
 });
