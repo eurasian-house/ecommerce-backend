@@ -180,14 +180,23 @@ const optimizeCloudinary = require("../utils/cloudinary");
 function getSizeArea(sizeString) {
   if (!sizeString) return Infinity;
 
-  const match = String(sizeString).match(
-    /(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)/
+  const normalized = String(sizeString)
+    .replaceAll("×", "x")
+    .toLowerCase();
+
+  const parts = normalized.split("x");
+
+  if (parts.length < 2) return Infinity;
+
+  const width = parseFloat(parts[0].trim());
+
+  const length = parseFloat(
+    parts[1].trim().split(" ")[0]
   );
 
-  if (!match) return Infinity;
-
-  const width = Number(match[1]);
-  const length = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(length)) {
+    return Infinity;
+  }
 
   return width * length;
 }
@@ -274,9 +283,10 @@ async function generateMerchantFeed() {
        * the first/only variant remains eligible for Ads.
        */
 
-      const isSmallestSize = smallestSku
-        ? size?.sku === smallestSku
-        : size === sizes[0];
+      const isSmallestSize =
+        smallestSku
+          ? size?.sku === smallestSku
+          : true;
 
       const item = channel.ele("item");
 
