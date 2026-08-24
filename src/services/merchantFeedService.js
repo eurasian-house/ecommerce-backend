@@ -166,15 +166,17 @@
 //   generateMerchantFeed,
 // };
 
+
+
 const { create } = require("xmlbuilder2");
 const supabase = require("../config/supabase");
 const getGoogleCategory = require("../utils/googleCategory");
 const optimizeCloudinary = require("../utils/cloudinary");
 
-// Extract the first numeric dimensions from a size string.
+// Extract the first two dimensions from a size string.
 // Examples:
-// "2x3 ft / 60x90 cm" -> 2 * 3
-// "8x15 ft / 240x450 cm" -> 8 * 15
+// "2x3 ft / 60x90 cm" -> 2 * 3 = 6
+// "8x15 ft / 240x450 cm" -> 8 * 15 = 120
 function getSizeArea(sizeString) {
   if (!sizeString) return Infinity;
 
@@ -203,67 +205,78 @@ async function generateMerchantFeed() {
 
   if (error) throw error;
 
-  const root = create({ version: "1.0", encoding: "UTF-8" })
-    .ele("rss", {
-      version: "2.0",
-      "xmlns:g": "http://base.google.com/ns/1.0",
-    });
+  const root = create({
+    version: "1.0",
+    encoding: "UTF-8",
+  }).ele("rss", {
+    version: "2.0",
+    "xmlns:g": "http://base.google.com/ns/1.0",
+  });
 
   const channel = root.ele("channel");
 
   channel.ele("title").txt("Eurasian House");
-  channel.ele("link").txt("https://www.eurasianrugs.com");
+
+  channel
+    .ele("link")
+    .txt("https://www.eurasianrugs.com");
 
   channel
     .ele("description")
     .txt("Premium Handmade Rugs & Carpets");
 
   for (const product of products) {
-    const sizes =
-      product.product_sizes?.length
-        ? product.product_sizes
-        : [null];
+    const sizes = product.product_sizes?.length
+      ? product.product_sizes
+      : [null];
 
-    // Find the smallest size based on actual dimensions.
+    /*
+     * ---------------------------------------------------------
+     * FIND SMALLEST SIZE
+     * ---------------------------------------------------------
+     */
+
     const sizesWithArea = sizes.map((size) => ({
       size,
       area: getSizeArea(size?.size),
     }));
 
-    const smallestVariant = sizesWithArea.reduce(
-      (smallest, current) => {
-        return current.area < smallest.area
-          ? current
-          : smallest;
-      },
-      sizesWithArea[0]
+    const validSizes = sizesWithArea.filter(
+      (item) => item.area !== Infinity
     );
 
-    const smallestSku = smallestVariant?.size?.sku || null;
+    const smallestVariant =
+      validSizes.length > 0
+        ? validSizes.reduce((smallest, current) => {
+          return current.area < smallest.area
+            ? current
+            : smallest;
+        })
+        : null;
 
+    const smallestSku =
+      smallestVariant?.size?.sku || null;
 
+    /*
+     * ---------------------------------------------------------
+     * CREATE GOOGLE ITEMS
+     * ---------------------------------------------------------
+     */
 
     for (const sizeInfo of sizesWithArea) {
       const size = sizeInfo.size;
 
-      const validSizes = sizesWithArea.filter(
-        (item) => item.area !== Infinity
-      );
+      /*
+       * If we successfully found a smallest SKU,
+       * only that SKU gets Shopping Ads.
+       *
+       * If size parsing fails completely, we fail safely:
+       * the first/only variant remains eligible for Ads.
+       */
 
-      const smallestVariant =
-        validSizes.length > 0
-          ? validSizes.reduce((smallest, current) =>
-            current.area < smallest.area
-              ? current
-              : smallest
-          )
-          : null;
-
-      const smallestSku =
-        smallestVariant?.size?.sku || null;
-
-      const isSmallestSize =
-        smallestSku && size?.sku === smallestSku;
+      const isSmallestSize = smallestSku
+        ? size?.sku === smallestSku
+        : size === sizes[0];
 
       const item = channel.ele("item");
 
@@ -321,6 +334,12 @@ async function generateMerchantFeed() {
         .ele("g:brand")
         .txt("Eurasian House");
 
+      /*
+       * ---------------------------------------------------------
+       * PRICE
+       * ---------------------------------------------------------
+       */
+
       const mrp = Number(
         size?.mrp_variation || 0
       );
@@ -353,6 +372,12 @@ async function generateMerchantFeed() {
           .txt(`${sellingPrice} USD`);
       }
 
+      /*
+       * ---------------------------------------------------------
+       * GOOGLE CATEGORY
+       * ---------------------------------------------------------
+       */
+
       item
         .ele("g:google_product_category")
         .txt(
@@ -362,23 +387,25 @@ async function generateMerchantFeed() {
       item
         .ele("g:product_type")
         .txt(
-          product.main_category
+          product.main_category || ""
         );
+
+      /*
+       * ---------------------------------------------------------
+       * PRODUCT ATTRIBUTES
+       * ---------------------------------------------------------
+       */
 
       if (product.primary_color) {
         item
           .ele("g:color")
-          .txt(
-            product.primary_color
-          );
+          .txt(product.primary_color);
       }
 
       if (product.materials) {
         item
           .ele("g:material")
-          .txt(
-            product.materials
-          );
+          .txt(product.materials);
       }
 
       if (size?.size) {
@@ -396,6 +423,12 @@ async function generateMerchantFeed() {
       item
         .ele("g:identifier_exists")
         .txt("false");
+
+      /*
+       * ---------------------------------------------------------
+       * CUSTOM LABELS
+       * ---------------------------------------------------------
+       */
 
       item
         .ele("g:custom_label_0")
@@ -427,9 +460,20 @@ async function generateMerchantFeed() {
           product.sub_category || ""
         );
 
-      // IMPORTANT:
-      // Only the smallest size is eligible for Shopping Ads.
-      // All other sizes remain available for Free Listings.
+      /*
+       * ---------------------------------------------------------
+       * SHOPPING ADS CONTROL
+       * ---------------------------------------------------------
+       *
+       * Smallest size:
+       *   Shopping Ads     YES
+       *   Free Listings    YES
+       *
+       * Other sizes:
+       *   Shopping Ads     NO
+       *   Free Listings    YES
+       */
+
       if (!isSmallestSize) {
         item
           .ele("g:excluded_destination")
