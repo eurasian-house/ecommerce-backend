@@ -230,15 +230,13 @@ async function generateMerchantFeed() {
       area: getSizeArea(size?.size),
     }));
 
-    // Find the smallest physical size
     const smallestVariant = sizesWithArea.reduce(
       (smallest, current) => {
-        if (current.area < smallest.area) {
-          return current;
-        }
-
-        return smallest;
-      }
+        return current.area < smallest.area
+          ? current
+          : smallest;
+      },
+      sizesWithArea[0]
     );
 
     const smallestSku = smallestVariant?.size?.sku || null;
@@ -248,9 +246,24 @@ async function generateMerchantFeed() {
     for (const sizeInfo of sizesWithArea) {
       const size = sizeInfo.size;
 
+      const validSizes = sizesWithArea.filter(
+        (item) => item.area !== Infinity
+      );
+
+      const smallestVariant =
+        validSizes.length > 0
+          ? validSizes.reduce((smallest, current) =>
+            current.area < smallest.area
+              ? current
+              : smallest
+          )
+          : null;
+
+      const smallestSku =
+        smallestVariant?.size?.sku || null;
+
       const isSmallestSize =
-        smallestSku &&
-        size?.sku === smallestSku;
+        smallestSku && size?.sku === smallestSku;
 
       const item = channel.ele("item");
 
