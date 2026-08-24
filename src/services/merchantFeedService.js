@@ -244,12 +244,6 @@ async function generateMerchantFeed() {
     const smallestSku =
       smallestVariant?.sku || null;
 
-    console.log("MERCHANT FEED TEST:", {
-      product: product.title,
-      smallestSize: smallestVariant?.size,
-      smallestSku,
-    });
-
     /*
      * ---------------------------------------------------------
      * CREATE GOOGLE ITEMS
@@ -491,12 +485,6 @@ async function generateMerchantFeed() {
        *   - remains available for Free Listings
        *   - is excluded from Shopping Ads
        */
-      console.log("VARIANT TEST:", {
-        size: size?.size,
-        sku: size?.sku,
-        smallestSku,
-        isSmallestSize,
-      });
 
       if (!isSmallestSize) {
         item
