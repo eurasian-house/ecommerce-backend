@@ -167,39 +167,10 @@
 // };
 
 
-
 const { create } = require("xmlbuilder2");
 const supabase = require("../config/supabase");
 const getGoogleCategory = require("../utils/googleCategory");
 const optimizeCloudinary = require("../utils/cloudinary");
-
-// Extract the first two dimensions from a size string.
-// Examples:
-// "2x3 ft / 60x90 cm" -> 2 * 3 = 6
-// "8x15 ft / 240x450 cm" -> 8 * 15 = 120
-function getSizeArea(sizeString) {
-  if (!sizeString) return Infinity;
-
-  const normalized = String(sizeString)
-    .replaceAll("×", "x")
-    .toLowerCase();
-
-  const parts = normalized.split("x");
-
-  if (parts.length < 2) return Infinity;
-
-  const width = parseFloat(parts[0].trim());
-
-  const length = parseFloat(
-    parts[1].trim().split(" ")[0]
-  );
-
-  if (!Number.isFinite(width) || !Number.isFinite(length)) {
-    return Infinity;
-  }
-
-  return width * length;
-}
 
 async function generateMerchantFeed() {
   const { data: products, error } = await supabase
@@ -224,7 +195,9 @@ async function generateMerchantFeed() {
 
   const channel = root.ele("channel");
 
-  channel.ele("title").txt("Eurasian House");
+  channel
+    .ele("title")
+    .txt("Eurasian House");
 
   channel
     .ele("link")
@@ -241,30 +214,35 @@ async function generateMerchantFeed() {
 
     /*
      * ---------------------------------------------------------
-     * FIND SMALLEST SIZE
+     * FIND SMALLEST ADVERTISING SIZE
      * ---------------------------------------------------------
+     *
+     * Current catalog rule:
+     *
+     * 1. If 2x2 ft exists → use 2x2 for Shopping Ads
+     * 2. Otherwise, if 2x3 ft exists → use 2x3 for Shopping Ads
+     * 3. Otherwise → use the first available size
+     *
+     * All other sizes remain available for Free Listings only.
      */
 
-    const sizesWithArea = sizes.map((size) => ({
-      size,
-      area: getSizeArea(size?.size),
-    }));
-
-    const validSizes = sizesWithArea.filter(
-      (item) => item.area !== Infinity
-    );
-
     const smallestVariant =
-      validSizes.length > 0
-        ? validSizes.reduce((smallest, current) => {
-          return current.area < smallest.area
-            ? current
-            : smallest;
-        })
-        : null;
+      sizes.find((size) =>
+        String(size?.size || "")
+          .toLowerCase()
+          .trim()
+          .startsWith("2x2")
+      ) ||
+      sizes.find((size) =>
+        String(size?.size || "")
+          .toLowerCase()
+          .trim()
+          .startsWith("2x3")
+      ) ||
+      sizes[0];
 
     const smallestSku =
-      smallestVariant?.size?.sku || null;
+      smallestVariant?.sku || null;
 
     /*
      * ---------------------------------------------------------
@@ -272,15 +250,15 @@ async function generateMerchantFeed() {
      * ---------------------------------------------------------
      */
 
-    for (const sizeInfo of sizesWithArea) {
-      const size = sizeInfo.size;
-
+    for (const size of sizes) {
       /*
-       * If we successfully found a smallest SKU,
-       * only that SKU gets Shopping Ads.
+       * Smallest/default size:
+       *   Shopping Ads  → YES
+       *   Free Listings → YES
        *
-       * If size parsing fails completely, we fail safely:
-       * the first/only variant remains eligible for Ads.
+       * Other sizes:
+       *   Shopping Ads  → NO
+       *   Free Listings → YES
        */
 
       const isSmallestSize =
@@ -289,6 +267,12 @@ async function generateMerchantFeed() {
           : true;
 
       const item = channel.ele("item");
+
+      /*
+       * ---------------------------------------------------------
+       * BASIC PRODUCT INFORMATION
+       * ---------------------------------------------------------
+       */
 
       item
         .ele("g:id")
@@ -312,6 +296,12 @@ async function generateMerchantFeed() {
           `https://www.eurasianrugs.com/products/${product.slug}`
         );
 
+      /*
+       * ---------------------------------------------------------
+       * IMAGES
+       * ---------------------------------------------------------
+       */
+
       item
         .ele("g:image_link")
         .txt(
@@ -322,9 +312,17 @@ async function generateMerchantFeed() {
         product.images.forEach((img) => {
           item
             .ele("g:additional_image_link")
-            .txt(optimizeCloudinary(img));
+            .txt(
+              optimizeCloudinary(img)
+            );
         });
       }
+
+      /*
+       * ---------------------------------------------------------
+       * AVAILABILITY
+       * ---------------------------------------------------------
+       */
 
       item
         .ele("g:availability")
@@ -346,7 +344,7 @@ async function generateMerchantFeed() {
 
       /*
        * ---------------------------------------------------------
-       * PRICE
+       * PRICE / SALE PRICE
        * ---------------------------------------------------------
        */
 
@@ -384,14 +382,16 @@ async function generateMerchantFeed() {
 
       /*
        * ---------------------------------------------------------
-       * GOOGLE CATEGORY
+       * GOOGLE PRODUCT CATEGORY
        * ---------------------------------------------------------
        */
 
       item
         .ele("g:google_product_category")
         .txt(
-          getGoogleCategory(product.main_category)
+          getGoogleCategory(
+            product.main_category
+          )
         );
 
       item
@@ -409,13 +409,17 @@ async function generateMerchantFeed() {
       if (product.primary_color) {
         item
           .ele("g:color")
-          .txt(product.primary_color);
+          .txt(
+            product.primary_color
+          );
       }
 
       if (product.materials) {
         item
           .ele("g:material")
-          .txt(product.materials);
+          .txt(
+            product.materials
+          );
       }
 
       if (size?.size) {
@@ -472,16 +476,14 @@ async function generateMerchantFeed() {
 
       /*
        * ---------------------------------------------------------
-       * SHOPPING ADS CONTROL
+       * SHOPPING ADS DESTINATION
        * ---------------------------------------------------------
        *
-       * Smallest size:
-       *   Shopping Ads     YES
-       *   Free Listings    YES
+       * ONLY the smallest size is eligible for Shopping Ads.
        *
-       * Other sizes:
-       *   Shopping Ads     NO
-       *   Free Listings    YES
+       * Every other size:
+       *   - remains available for Free Listings
+       *   - is excluded from Shopping Ads
        */
 
       if (!isSmallestSize) {
