@@ -98,10 +98,18 @@ router.post("/verify-payment", async (req, res) => {
     // ✅ Send confirmation email
     try {
       await sendOrderConfirmationEmail(orderId);
+    } catch (emailError) {
+      console.error(
+        "Customer order confirmation email failed:",
+        emailError
+      );
+    }
+
+    try {
       await sendAdminNewOrderEmail(orderId);
     } catch (emailError) {
       console.error(
-        "Order confirmation email failed:",
+        "Admin new order email failed:",
         emailError
       );
     }
