@@ -6,7 +6,7 @@ const express = require("express");
 
 const corsMiddleware = require("./middleware/cors");
 
-const { verifyTransporter } = require("./emails/transporter");
+// const { verifyTransporter } = require("./emails/transporter");
 
 const testEmailRoute = require("./emails/templates/testEmail");
 
@@ -38,5 +38,5 @@ const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://127.0.0.1:${PORT}`);
 
-  verifyTransporter().catch(console.error);
+  // verifyTransporter().catch(console.error);
 });
