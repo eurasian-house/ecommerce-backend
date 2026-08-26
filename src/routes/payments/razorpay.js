@@ -95,24 +95,23 @@ router.post("/verify-payment", async (req, res) => {
       return res.status(500).json({ success: false });
     }
 
-    // ✅ Send confirmation email
-    try {
-      await sendOrderConfirmationEmail(orderId);
-    } catch (emailError) {
-      console.error(
-        "Customer order confirmation email failed:",
-        emailError
-      );
-    }
+    // Email delivery can take several seconds. It should not delay the verified
+    // payment response or the customer's redirect to the success page.
+    void Promise.allSettled([
+      sendOrderConfirmationEmail(orderId),
+      sendAdminNewOrderEmail(orderId),
+    ]).then(([customerEmail, adminEmail]) => {
+      if (customerEmail.status === "rejected") {
+        console.error(
+          "Customer order confirmation email failed:",
+          customerEmail.reason
+        );
+      }
 
-    try {
-      await sendAdminNewOrderEmail(orderId);
-    } catch (emailError) {
-      console.error(
-        "Admin new order email failed:",
-        emailError
-      );
-    }
+      if (adminEmail.status === "rejected") {
+        console.error("Admin new order email failed:", adminEmail.reason);
+      }
+    });
 
     return res.json({ success: true });
 
