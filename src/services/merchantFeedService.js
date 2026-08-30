@@ -3,7 +3,6 @@
 // const getGoogleCategory = require("../utils/googleCategory");
 // const optimizeCloudinary = require("../utils/cloudinary");
 
-
 // async function generateMerchantFeed() {
 //   const { data: products, error } = await supabase
 //     .from("products")
@@ -17,36 +16,106 @@
 
 //   if (error) throw error;
 
-//   const root = create({ version: "1.0", encoding: "UTF-8" })
-//     .ele("rss", {
-//       version: "2.0",
-//       "xmlns:g": "http://base.google.com/ns/1.0",
-//     });
+//   const root = create({
+//     version: "1.0",
+//     encoding: "UTF-8",
+//   }).ele("rss", {
+//     version: "2.0",
+//     "xmlns:g": "http://base.google.com/ns/1.0",
+//   });
 
 //   const channel = root.ele("channel");
 
-//   channel.ele("title").txt("Eurasian House");
-//   channel.ele("link").txt("https://www.eurasianrugs.com");
+//   channel
+//     .ele("title")
+//     .txt("Eurasian House");
+
+//   channel
+//     .ele("link")
+//     .txt("https://www.eurasianrugs.com");
+
 //   channel
 //     .ele("description")
 //     .txt("Premium Handmade Rugs & Carpets");
 
 //   for (const product of products) {
-//     const sizes =
-//       product.product_sizes?.length
-//         ? product.product_sizes
-//         : [null];
+//     const sizes = product.product_sizes?.length
+//       ? product.product_sizes
+//       : [null];
+
+//     /*
+//      * ---------------------------------------------------------
+//      * FIND SMALLEST ADVERTISING SIZE
+//      * ---------------------------------------------------------
+//      *
+//      * Current catalog rule:
+//      *
+//      * 1. If 2x2 ft exists → use 2x2 for Shopping Ads
+//      * 2. Otherwise, if 2x3 ft exists → use 2x3 for Shopping Ads
+//      * 3. Otherwise → use the first available size
+//      *
+//      * All other sizes remain available for Free Listings only.
+//      */
+
+//     const smallestVariant =
+//       sizes.find((size) =>
+//         String(size?.size || "")
+//           .toLowerCase()
+//           .trim()
+//           .startsWith("2x2")
+//       ) ||
+//       sizes.find((size) =>
+//         String(size?.size || "")
+//           .toLowerCase()
+//           .trim()
+//           .startsWith("2x3")
+//       ) ||
+//       sizes[0];
+
+//     const smallestSku =
+//       smallestVariant?.sku || null;
+
+//     /*
+//      * ---------------------------------------------------------
+//      * CREATE GOOGLE ITEMS
+//      * ---------------------------------------------------------
+//      */
 
 //     for (const size of sizes) {
+//       /*
+//        * Smallest/default size:
+//        *   Shopping Ads  → YES
+//        *   Free Listings → YES
+//        *
+//        * Other sizes:
+//        *   Shopping Ads  → NO
+//        *   Free Listings → YES
+//        */
+
+//       const isSmallestSize =
+//         smallestSku
+//           ? size?.sku === smallestSku
+//           : true;
+
 //       const item = channel.ele("item");
 
-//       item.ele("g:id").txt(size?.sku || product.id);
+//       /*
+//        * ---------------------------------------------------------
+//        * BASIC PRODUCT INFORMATION
+//        * ---------------------------------------------------------
+//        */
+
+//       item
+//         .ele("g:id")
+//         .txt(size?.sku || product.id);
 
 //       item
 //         .ele("g:item_group_id")
 //         .txt(String(product.id));
 
-//       item.ele("title").txt(product.title);
+//       item
+//         .ele("title")
+//         .txt(product.title);
 
 //       item
 //         .ele("description")
@@ -58,6 +127,12 @@
 //           `https://www.eurasianrugs.com/products/${product.slug}`
 //         );
 
+//       /*
+//        * ---------------------------------------------------------
+//        * IMAGES
+//        * ---------------------------------------------------------
+//        */
+
 //       item
 //         .ele("g:image_link")
 //         .txt(
@@ -68,9 +143,17 @@
 //         product.images.forEach((img) => {
 //           item
 //             .ele("g:additional_image_link")
-//             .txt(optimizeCloudinary(img));
+//             .txt(
+//               optimizeCloudinary(img)
+//             );
 //         });
 //       }
+
+//       /*
+//        * ---------------------------------------------------------
+//        * AVAILABILITY
+//        * ---------------------------------------------------------
+//        */
 
 //       item
 //         .ele("g:availability")
@@ -82,78 +165,163 @@
 //             : "in stock"
 //         );
 
-//       item.ele("g:condition").txt("new");
+//       item
+//         .ele("g:condition")
+//         .txt("new");
 
-//       item.ele("g:brand").txt("Eurasian House");
+//       item
+//         .ele("g:brand")
+//         .txt("Eurasian House");
 
-//       const mrp = Number(size?.mrp_variation || 0);
-//       const discount = Number(size?.discount_variation || 0);
+//       /*
+//        * ---------------------------------------------------------
+//        * PRICE / SALE PRICE
+//        * ---------------------------------------------------------
+//        */
+
+//       const mrp = Number(
+//         size?.mrp_variation || 0
+//       );
+
+//       const discount = Number(
+//         size?.discount_variation || 0
+//       );
 
 //       const sellingPrice =
 //         mrp > 0
-//           ? (mrp - (mrp * discount) / 100).toFixed(2)
-//           : Number(size?.selling_price || 0).toFixed(2);
+//           ? (
+//             mrp -
+//             (mrp * discount) / 100
+//           ).toFixed(2)
+//           : Number(
+//             size?.selling_price || 0
+//           ).toFixed(2);
 
 //       if (mrp > 0 && discount > 0) {
-//         item.ele("g:price").txt(`${mrp.toFixed(2)} USD`);
-//         item.ele("g:sale_price").txt(`${sellingPrice} USD`);
+//         item
+//           .ele("g:price")
+//           .txt(`${mrp.toFixed(2)} USD`);
+
+//         item
+//           .ele("g:sale_price")
+//           .txt(`${sellingPrice} USD`);
 //       } else {
-//         item.ele("g:price").txt(`${sellingPrice} USD`);
+//         item
+//           .ele("g:price")
+//           .txt(`${sellingPrice} USD`);
 //       }
+
+//       /*
+//        * ---------------------------------------------------------
+//        * GOOGLE PRODUCT CATEGORY
+//        * ---------------------------------------------------------
+//        */
 
 //       item
 //         .ele("g:google_product_category")
 //         .txt(
-//           getGoogleCategory(product.main_category)
+//           getGoogleCategory(
+//             product.main_category
+//           )
 //         );
 
 //       item
 //         .ele("g:product_type")
-//         .txt(product.main_category);
+//         .txt(
+//           product.main_category || ""
+//         );
+
+//       /*
+//        * ---------------------------------------------------------
+//        * PRODUCT ATTRIBUTES
+//        * ---------------------------------------------------------
+//        */
 
 //       if (product.primary_color) {
 //         item
 //           .ele("g:color")
-//           .txt(product.primary_color);
+//           .txt(
+//             product.primary_color
+//           );
 //       }
 
 //       if (product.materials) {
 //         item
 //           .ele("g:material")
-//           .txt(product.materials);
+//           .txt(
+//             product.materials
+//           );
 //       }
 
 //       if (size?.size) {
-//         item.ele("g:size").txt(size.size);
+//         item
+//           .ele("g:size")
+//           .txt(size.size);
 //       }
 
 //       if (size?.sku) {
-//         item.ele("g:mpn").txt(size.sku);
+//         item
+//           .ele("g:mpn")
+//           .txt(size.sku);
 //       }
 
 //       item
 //         .ele("g:identifier_exists")
 //         .txt("false");
 
+//       /*
+//        * ---------------------------------------------------------
+//        * CUSTOM LABELS
+//        * ---------------------------------------------------------
+//        */
+
 //       item
 //         .ele("g:custom_label_0")
-//         .txt(product.main_category || "");
+//         .txt(
+//           product.main_category || ""
+//         );
 
 //       item
 //         .ele("g:custom_label_1")
-//         .txt(product.quality || "");
+//         .txt(
+//           product.quality || ""
+//         );
 
 //       item
 //         .ele("g:custom_label_2")
-//         .txt(product.shape || "");
+//         .txt(
+//           product.shape || ""
+//         );
 
 //       item
 //         .ele("g:custom_label_3")
-//         .txt(product.primary_color || "");
+//         .txt(
+//           product.primary_color || ""
+//         );
 
 //       item
 //         .ele("g:custom_label_4")
-//         .txt(product.sub_category || "");
+//         .txt(
+//           product.sub_category || ""
+//         );
+
+//       /*
+//        * ---------------------------------------------------------
+//        * SHOPPING ADS DESTINATION
+//        * ---------------------------------------------------------
+//        *
+//        * ONLY the smallest size is eligible for Shopping Ads.
+//        *
+//        * Every other size:
+//        *   - remains available for Free Listings
+//        *   - is excluded from Shopping Ads
+//        */
+
+//       if (!isSmallestSize) {
+//         item
+//           .ele("g:excluded_destination")
+//           .txt("Shopping_ads");
+//       }
 //     }
 //   }
 
@@ -167,6 +335,9 @@
 // };
 
 
+
+
+
 const { create } = require("xmlbuilder2");
 const supabase = require("../config/supabase");
 const getGoogleCategory = require("../utils/googleCategory");
@@ -176,9 +347,28 @@ async function generateMerchantFeed() {
   const { data: products, error } = await supabase
     .from("products")
     .select(`
-      *,
-      product_sizes(*),
-      product_colors(*)
+      id,
+      title,
+      description,
+      slug,
+      thumbnail,
+      images,
+      primary_color,
+      materials,
+      main_category,
+      sub_category,
+      quality,
+      shape,
+      pattern,
+      created_at,
+      product_sizes (
+        size,
+        selling_price,
+        stock,
+        sku,
+        mrp_variation,
+        discount_variation
+      )
     `)
     .eq("status", "active")
     .order("created_at", { ascending: false });
@@ -195,9 +385,7 @@ async function generateMerchantFeed() {
 
   const channel = root.ele("channel");
 
-  channel
-    .ele("title")
-    .txt("Eurasian House");
+  channel.ele("title").txt("Eurasian House");
 
   channel
     .ele("link")
@@ -213,17 +401,11 @@ async function generateMerchantFeed() {
       : [null];
 
     /*
-     * ---------------------------------------------------------
      * FIND SMALLEST ADVERTISING SIZE
-     * ---------------------------------------------------------
      *
-     * Current catalog rule:
-     *
-     * 1. If 2x2 ft exists → use 2x2 for Shopping Ads
-     * 2. Otherwise, if 2x3 ft exists → use 2x3 for Shopping Ads
-     * 3. Otherwise → use the first available size
-     *
-     * All other sizes remain available for Free Listings only.
+     * 1. 2x2 ft
+     * 2. 2x3 ft
+     * 3. First available size
      */
 
     const smallestVariant =
@@ -241,37 +423,21 @@ async function generateMerchantFeed() {
       ) ||
       sizes[0];
 
-    const smallestSku =
-      smallestVariant?.sku || null;
+    const smallestSku = smallestVariant?.sku || null;
 
     /*
-     * ---------------------------------------------------------
      * CREATE GOOGLE ITEMS
-     * ---------------------------------------------------------
      */
 
     for (const size of sizes) {
-      /*
-       * Smallest/default size:
-       *   Shopping Ads  → YES
-       *   Free Listings → YES
-       *
-       * Other sizes:
-       *   Shopping Ads  → NO
-       *   Free Listings → YES
-       */
-
-      const isSmallestSize =
-        smallestSku
-          ? size?.sku === smallestSku
-          : true;
+      const isSmallestSize = smallestSku
+        ? size?.sku === smallestSku
+        : true;
 
       const item = channel.ele("item");
 
       /*
-       * ---------------------------------------------------------
        * BASIC PRODUCT INFORMATION
-       * ---------------------------------------------------------
        */
 
       item
@@ -297,9 +463,7 @@ async function generateMerchantFeed() {
         );
 
       /*
-       * ---------------------------------------------------------
        * IMAGES
-       * ---------------------------------------------------------
        */
 
       item
@@ -319,9 +483,7 @@ async function generateMerchantFeed() {
       }
 
       /*
-       * ---------------------------------------------------------
        * AVAILABILITY
-       * ---------------------------------------------------------
        */
 
       item
@@ -343,9 +505,7 @@ async function generateMerchantFeed() {
         .txt("Eurasian House");
 
       /*
-       * ---------------------------------------------------------
        * PRICE / SALE PRICE
-       * ---------------------------------------------------------
        */
 
       const mrp = Number(
@@ -359,12 +519,12 @@ async function generateMerchantFeed() {
       const sellingPrice =
         mrp > 0
           ? (
-            mrp -
-            (mrp * discount) / 100
-          ).toFixed(2)
+              mrp -
+              (mrp * discount) / 100
+            ).toFixed(2)
           : Number(
-            size?.selling_price || 0
-          ).toFixed(2);
+              size?.selling_price || 0
+            ).toFixed(2);
 
       if (mrp > 0 && discount > 0) {
         item
@@ -381,17 +541,13 @@ async function generateMerchantFeed() {
       }
 
       /*
-       * ---------------------------------------------------------
        * GOOGLE PRODUCT CATEGORY
-       * ---------------------------------------------------------
        */
 
       item
         .ele("g:google_product_category")
         .txt(
-          getGoogleCategory(
-            product.main_category
-          )
+          getGoogleCategory(product.main_category)
         );
 
       item
@@ -401,25 +557,33 @@ async function generateMerchantFeed() {
         );
 
       /*
-       * ---------------------------------------------------------
        * PRODUCT ATTRIBUTES
-       * ---------------------------------------------------------
        */
 
       if (product.primary_color) {
         item
           .ele("g:color")
-          .txt(
-            product.primary_color
-          );
+          .txt(product.primary_color);
       }
 
       if (product.materials) {
         item
           .ele("g:material")
           .txt(
-            product.materials
+            Array.isArray(product.materials)
+              ? product.materials.join(", ")
+              : product.materials
           );
+      }
+
+      /*
+       * PATTERN
+       */
+
+      if (product.pattern) {
+        item
+          .ele("g:pattern")
+          .txt(product.pattern);
       }
 
       if (size?.size) {
@@ -439,51 +603,35 @@ async function generateMerchantFeed() {
         .txt("false");
 
       /*
-       * ---------------------------------------------------------
        * CUSTOM LABELS
-       * ---------------------------------------------------------
        */
 
       item
         .ele("g:custom_label_0")
-        .txt(
-          product.main_category || ""
-        );
+        .txt(product.main_category || "");
 
       item
         .ele("g:custom_label_1")
-        .txt(
-          product.quality || ""
-        );
+        .txt(product.quality || "");
 
       item
         .ele("g:custom_label_2")
-        .txt(
-          product.shape || ""
-        );
+        .txt(product.shape || "");
 
       item
         .ele("g:custom_label_3")
-        .txt(
-          product.primary_color || ""
-        );
+        .txt(product.primary_color || "");
 
       item
         .ele("g:custom_label_4")
         .txt(
-          product.sub_category || ""
+          Array.isArray(product.sub_category)
+            ? product.sub_category.join(", ")
+            : product.sub_category || ""
         );
 
       /*
-       * ---------------------------------------------------------
        * SHOPPING ADS DESTINATION
-       * ---------------------------------------------------------
-       *
-       * ONLY the smallest size is eligible for Shopping Ads.
-       *
-       * Every other size:
-       *   - remains available for Free Listings
-       *   - is excluded from Shopping Ads
        */
 
       if (!isSmallestSize) {
