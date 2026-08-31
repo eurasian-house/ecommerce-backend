@@ -505,22 +505,18 @@ async function streamMerchantFeed(res) {
        * 3. First available
        */
 
+      const normalizeSize = (size) =>
+        String(size?.size || "")
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, "");
+
       const smallestVariant =
         sizes.find((size) =>
-          String(
-            size?.size || ""
-          )
-            .toLowerCase()
-            .trim()
-            .startsWith("2x2")
+          /^2x2(?:ft|feet|$)/.test(normalizeSize(size))
         ) ||
         sizes.find((size) =>
-          String(
-            size?.size || ""
-          )
-            .toLowerCase()
-            .trim()
-            .startsWith("2x3")
+          /^2x3(?:ft|feet|$)/.test(normalizeSize(size))
         ) ||
         sizes[0];
 
