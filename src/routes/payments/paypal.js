@@ -32,13 +32,47 @@ router.get("/paypal/config", (req, res) => {
  */
 router.post("/paypal/create-order", async (req, res) => {
   try {
-    const { amount, currency = "USD" } = req.body;
+    // const { amount, currency = "USD" } = req.body;
 
-    if (!amount) {
+    // if (!amount) {
+    //   return res.status(400).json({
+    //     error: "Amount is required",
+    //   });
+    // }
+    const { orderId } = req.body;
+
+    if (!orderId) {
       return res.status(400).json({
-        error: "Amount is required",
+        error: "Order ID is required",
       });
     }
+
+    const { data: dbOrder, error: orderError } = await supabase
+      .from("orders")
+      .select("id, total_amount, status")
+      .eq("id", orderId)
+      .single();
+
+    if (orderError || !dbOrder) {
+      return res.status(404).json({
+        error: "Order not found",
+      });
+    }
+
+    if (dbOrder.status !== "pending") {
+      return res.status(400).json({
+        error: "Order is not available for payment",
+      });
+    }
+
+    const amount = Number(dbOrder.total_amount);
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        error: "Invalid order amount",
+      });
+    }
+
 
     const accessToken = await getAccessToken();
 
@@ -53,7 +87,7 @@ router.post("/paypal/create-order", async (req, res) => {
         purchase_units: [
           {
             amount: {
-              currency_code: currency,
+              currency_code: "USD",
               value: Number(amount).toFixed(2),
             },
           },
@@ -111,8 +145,22 @@ router.post("/paypal/capture-order", async (req, res) => {
       return res.status(response.status).json(capture);
     }
 
+    // const paypalPaymentId =
+    //   capture.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+
+    const captureStatus =
+      capture.purchase_units?.[0]?.payments?.captures?.[0]?.status;
+
     const paypalPaymentId =
       capture.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+
+    if (capture.status !== "COMPLETED" || captureStatus !== "COMPLETED") {
+      console.error("PayPal payment not completed:", capture);
+
+      return res.status(400).json({
+        error: "PayPal payment was not completed.",
+      });
+    }
 
     const { error } = await supabase
       .from("orders")
