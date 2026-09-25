@@ -28,6 +28,7 @@ router.post("/create-razorpay-order", async (req, res) => {
       amount: amount * 100,
       currency: "USD",
       receipt: orderId,
+      payment_capture: 1,
     });
 
     return res.json(order);
@@ -76,6 +77,15 @@ router.post("/verify-payment", async (req, res) => {
     const razorpayOrder = await razorpay.orders.fetch(
       razorpay_order_id
     );
+
+    const payment = await razorpay.payments.fetch(razorpay_payment_id);
+
+    if (payment.status !== "captured") {
+      return res.status(400).json({
+        success: false,
+        error: "Payment has not been captured yet.",
+      });
+    }
 
     const orderId = razorpayOrder.receipt;
 
