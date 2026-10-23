@@ -24,6 +24,89 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
         VAPID_PUBLIC_KEY,
         VAPID_PRIVATE_KEY
     );
+
+
+    async function notifyChatSubscribers(conversation, message, senderType) {
+        if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+
+        try {
+            const isCustomerMessage = senderType === "customer";
+
+            const query = supabase
+                .from("chat_push_subscriptions")
+                .select("id, endpoint, p256dh, auth")
+                .eq(
+                    "subscriber_type",
+                    isCustomerMessage ? "admin" : "customer"
+                );
+
+            // Customer replies should notify only subscribers for that conversation.
+            if (!isCustomerMessage) {
+                query.eq("conversation_id", conversation.id);
+            }
+
+            const { data: subscriptions, error } = await query;
+
+            if (error) {
+                console.error("Load push subscriptions:", error.message);
+                return;
+            }
+
+            const title = isCustomerMessage
+                ? "New customer message · Eurasian House"
+                : "New reply · Eurasian House";
+
+            const body = isCustomerMessage
+                ? `${conversation.customer_name || "A customer"}: ${message.message}`
+                : `Eurasian House replied: ${message.message}`;
+
+            const url = isCustomerMessage
+                ? "/admin/messages"
+                : "/";
+
+            await Promise.allSettled(
+                (subscriptions || []).map(async (subscription) => {
+                    try {
+                        await webpush.sendNotification(
+                            {
+                                endpoint: subscription.endpoint,
+                                keys: {
+                                    p256dh: subscription.p256dh,
+                                    auth: subscription.auth,
+                                },
+                            },
+                            JSON.stringify({
+                                title,
+                                body: body.slice(0, 180),
+                                url,
+                                tag: `chat-${conversation.id}`,
+                            })
+                        );
+                    } catch (pushError) {
+                        // Remove subscriptions that are no longer valid.
+                        if (
+                            pushError.statusCode === 404 ||
+                            pushError.statusCode === 410
+                        ) {
+                            await supabase
+                                .from("chat_push_subscriptions")
+                                .delete()
+                                .eq("id", subscription.id);
+                        } else {
+                            console.error(
+                                "Push delivery failed:",
+                                pushError.statusCode || pushError.message
+                            );
+                        }
+                    }
+                })
+            );
+        } catch (error) {
+            // A push failure must not undo a message that was saved.
+            console.error("Chat notification error:", error.message);
+        }
+    }
+
 }
 
 function rateLimit(key, maxRequests = 30, windowMs = 60_000) {
@@ -284,6 +367,7 @@ router.post("/api/chat/conversations/:id/messages", async (req, res) => {
 
         if (messageError) throw messageError;
 
+
         const { error: updateError } = await supabase
             .from("chat_conversations")
             .update({ last_message_at: newMessage.created_at })
@@ -293,7 +377,15 @@ router.post("/api/chat/conversations/:id/messages", async (req, res) => {
             console.error("Update chat timestamp error:", updateError.message);
         }
 
+        // Send push notifications without risking the saved message.
+        await notifyChatSubscribers(
+            conversation,
+            newMessage,
+            senderType
+        );
+
         return res.status(201).json({ message: newMessage });
+
     } catch (error) {
         console.error("Send chat message error:", error.message);
         return res.status(500).json({
