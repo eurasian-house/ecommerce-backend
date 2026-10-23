@@ -692,4 +692,55 @@ router.post(
     }
 );
 
+
+router.post(
+    "/api/chat/admin/conversations/:id/read",
+    async (req, res) => {
+        try {
+            const user = await getUser(req);
+
+            if (!isAdmin(user)) {
+                return res.status(403).json({
+                    error: "Forbidden.",
+                });
+            }
+
+            const conversationId = req.params.id;
+
+            const { data, error } = await supabase
+                .from("chat_conversations")
+                .update({
+                    admin_unread_count: 0,
+                    admin_last_read_at: new Date().toISOString(),
+                })
+                .eq("id", conversationId)
+                .select("id, admin_unread_count, admin_last_read_at")
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (!data) {
+                return res.status(404).json({
+                    error: "Conversation not found.",
+                });
+            }
+
+            return res.json({
+                success: true,
+                conversation: data,
+            });
+        } catch (error) {
+            console.error(
+                "Mark chat conversation as read:",
+                error.message
+            );
+
+            return res.status(500).json({
+                error: "Could not mark conversation as read.",
+            });
+        }
+    }
+);
+
+
 module.exports = router;
