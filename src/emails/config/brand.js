@@ -7,10 +7,6 @@ module.exports = {
 
   email: "contact@eurasianrugs.com",
 
-  // logo: {
-  //   light: "https://eurasianrugs.com/logo.png",
-  //   dark: "https://eurasianrugs.com/logobw.png",
-  // },
   logo: {
     light: "https://eurasianrugs.com/LOGO.svg",
     dark: "https://eurasianrugs.com/LOGO.svg",
