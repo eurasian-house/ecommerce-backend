@@ -314,7 +314,7 @@ router.get("/api/chat/admin/conversations", async (req, res) => {
         const { data, error } = await supabase
             .from("chat_conversations")
             .select(
-                "id, customer_id, customer_name, customer_email, status, created_at, last_message_at"
+                "id, customer_id, customer_name, customer_email, status, created_at, last_message_at, admin_unread_count, admin_last_read_at"
             )
             .order("last_message_at", { ascending: false })
             .limit(100);
