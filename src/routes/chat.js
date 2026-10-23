@@ -9,105 +9,25 @@ const router = express.Router();
 const ADMIN_EMAIL = "contacteurasianhouse@gmail.com";
 const MAX_MESSAGE_LENGTH = 4000;
 
-// Basic per-process rate limit.
-// We'll strengthen this later if needed for multi-instance deployment.
-const requestCounts = new Map();
-
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_SUBJECT =
     process.env.VAPID_SUBJECT || "mailto:contacteurasianhouse@gmail.com";
 
+const requestCounts = new Map();
+
+// Configure push notifications if the keys are available.
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     webpush.setVapidDetails(
         VAPID_SUBJECT,
         VAPID_PUBLIC_KEY,
         VAPID_PRIVATE_KEY
     );
-
-
-    async function notifyChatSubscribers(conversation, message, senderType) {
-        if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
-
-        try {
-            const isCustomerMessage = senderType === "customer";
-
-            const query = supabase
-                .from("chat_push_subscriptions")
-                .select("id, endpoint, p256dh, auth")
-                .eq(
-                    "subscriber_type",
-                    isCustomerMessage ? "admin" : "customer"
-                );
-
-            // Customer replies should notify only subscribers for that conversation.
-            if (!isCustomerMessage) {
-                query.eq("conversation_id", conversation.id);
-            }
-
-            const { data: subscriptions, error } = await query;
-
-            if (error) {
-                console.error("Load push subscriptions:", error.message);
-                return;
-            }
-
-            const title = isCustomerMessage
-                ? "New customer message · Eurasian House"
-                : "New reply · Eurasian House";
-
-            const body = isCustomerMessage
-                ? `${conversation.customer_name || "A customer"}: ${message.message}`
-                : `Eurasian House replied: ${message.message}`;
-
-            const url = isCustomerMessage
-                ? "/admin/messages"
-                : "/";
-
-            await Promise.allSettled(
-                (subscriptions || []).map(async (subscription) => {
-                    try {
-                        await webpush.sendNotification(
-                            {
-                                endpoint: subscription.endpoint,
-                                keys: {
-                                    p256dh: subscription.p256dh,
-                                    auth: subscription.auth,
-                                },
-                            },
-                            JSON.stringify({
-                                title,
-                                body: body.slice(0, 180),
-                                url,
-                                tag: `chat-${conversation.id}`,
-                            })
-                        );
-                    } catch (pushError) {
-                        // Remove subscriptions that are no longer valid.
-                        if (
-                            pushError.statusCode === 404 ||
-                            pushError.statusCode === 410
-                        ) {
-                            await supabase
-                                .from("chat_push_subscriptions")
-                                .delete()
-                                .eq("id", subscription.id);
-                        } else {
-                            console.error(
-                                "Push delivery failed:",
-                                pushError.statusCode || pushError.message
-                            );
-                        }
-                    }
-                })
-            );
-        } catch (error) {
-            // A push failure must not undo a message that was saved.
-            console.error("Chat notification error:", error.message);
-        }
-    }
-
 }
+
+// --------------------------------------------------
+// RATE LIMITING
+// --------------------------------------------------
 
 function rateLimit(key, maxRequests = 30, windowMs = 60_000) {
     const now = Date.now();
@@ -118,22 +38,31 @@ function rateLimit(key, maxRequests = 30, windowMs = 60_000) {
             startedAt: now,
             count: 1,
         });
+
         return true;
     }
 
-    if (current.count >= maxRequests) return false;
+    if (current.count >= maxRequests) {
+        return false;
+    }
 
     current.count += 1;
     return true;
 }
+
+// --------------------------------------------------
+// HELPERS
+// --------------------------------------------------
 
 function hashVisitorToken(token) {
     return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 function validVisitorToken(token) {
-    return typeof token === "string" &&
-        /^[a-f0-9]{64}$/i.test(token);
+    return (
+        typeof token === "string" &&
+        /^[a-f0-9]{64}$/i.test(token)
+    );
 }
 
 async function getUser(req) {
@@ -150,7 +79,9 @@ async function getUser(req) {
 }
 
 function isAdmin(user) {
-    return user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    return (
+        user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+    );
 }
 
 async function getAuthorizedConversation(req, conversationId, user) {
@@ -162,16 +93,17 @@ async function getAuthorizedConversation(req, conversationId, user) {
 
     if (error || !conversation) return null;
 
-    // Only the configured admin can access all conversations.
+    // The configured admin can access all conversations.
     if (isAdmin(user)) return conversation;
 
-    // Signed-in customer: must own the conversation.
+    // Signed-in customers can access their own conversations.
     if (user && conversation.customer_id === user.id) {
         return conversation;
     }
 
-    // Anonymous customer: must prove possession of the visitor token.
-    const visitorToken = req.body?.visitorToken ||
+    // Anonymous customers must prove possession of their visitor token.
+    const visitorToken =
+        req.body?.visitorToken ||
         req.query?.visitorToken ||
         req.headers["x-chat-visitor-token"];
 
@@ -187,7 +119,110 @@ async function getAuthorizedConversation(req, conversationId, user) {
     return null;
 }
 
-// Create a new conversation.
+// --------------------------------------------------
+// PUSH NOTIFICATION DELIVERY
+// IMPORTANT: This function must remain at file scope.
+// --------------------------------------------------
+
+async function notifyChatSubscribers(conversation, message, senderType) {
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+        return;
+    }
+
+    try {
+        const isCustomerMessage = senderType === "customer";
+
+        let query = supabase
+            .from("chat_push_subscriptions")
+            .select("id, endpoint, p256dh, auth")
+            .eq(
+                "subscriber_type",
+                isCustomerMessage ? "admin" : "customer"
+            );
+
+        // Admin replies notify customers subscribed to this conversation.
+        if (!isCustomerMessage) {
+            query = query.eq("conversation_id", conversation.id);
+        }
+
+        const { data: subscriptions, error } = await query;
+
+        if (error) {
+            console.error(
+                "Load push subscriptions:",
+                error.message
+            );
+            return;
+        }
+
+        const title = isCustomerMessage
+            ? "New customer message · Eurasian House"
+            : "New reply · Eurasian House";
+
+        const body = isCustomerMessage
+            ? `${conversation.customer_name || "A customer"}: ${message.message}`
+            : `Eurasian House replied: ${message.message}`;
+
+        const url = isCustomerMessage
+            ? "/admin/messages"
+            : "/";
+
+        await Promise.allSettled(
+            (subscriptions || []).map(async (subscription) => {
+                try {
+                    await webpush.sendNotification(
+                        {
+                            endpoint: subscription.endpoint,
+                            keys: {
+                                p256dh: subscription.p256dh,
+                                auth: subscription.auth,
+                            },
+                        },
+                        JSON.stringify({
+                            title,
+                            body: body.slice(0, 180),
+                            url,
+                            tag: `chat-${conversation.id}`,
+                        })
+                    );
+                } catch (pushError) {
+                    if (
+                        pushError.statusCode === 404 ||
+                        pushError.statusCode === 410
+                    ) {
+                        const { error: deleteError } = await supabase
+                            .from("chat_push_subscriptions")
+                            .delete()
+                            .eq("id", subscription.id);
+
+                        if (deleteError) {
+                            console.error(
+                                "Remove expired push subscription:",
+                                deleteError.message
+                            );
+                        }
+                    } else {
+                        console.error(
+                            "Push delivery failed:",
+                            pushError.statusCode || pushError.message
+                        );
+                    }
+                }
+            })
+        );
+    } catch (error) {
+        // A push failure must never invalidate a saved chat message.
+        console.error(
+            "Chat notification error:",
+            error.message
+        );
+    }
+}
+
+// --------------------------------------------------
+// CREATE CONVERSATION
+// --------------------------------------------------
+
 router.post("/api/chat/conversations", async (req, res) => {
     try {
         const user = await getUser(req);
@@ -206,13 +241,15 @@ router.post("/api/chat/conversations", async (req, res) => {
             });
         }
 
-        const name = typeof req.body?.name === "string"
-            ? req.body.name.trim().slice(0, 120)
-            : "";
+        const name =
+            typeof req.body?.name === "string"
+                ? req.body.name.trim().slice(0, 120)
+                : "";
 
-        const email = typeof req.body?.email === "string"
-            ? req.body.email.trim().slice(0, 254)
-            : "";
+        const email =
+            typeof req.body?.email === "string"
+                ? req.body.email.trim().slice(0, 254)
+                : "";
 
         const rateKey = user
             ? `user:${user.id}`
@@ -231,170 +268,244 @@ router.post("/api/chat/conversations", async (req, res) => {
                 visitor_token_hash: user
                     ? null
                     : hashVisitorToken(visitorToken),
-                customer_name: name || user?.user_metadata?.full_name ||
-                    user?.user_metadata?.name || null,
+                customer_name:
+                    name ||
+                    user?.user_metadata?.full_name ||
+                    user?.user_metadata?.name ||
+                    null,
                 customer_email: email || user?.email || null,
             })
-            .select("id, customer_id, customer_name, customer_email, status, created_at, last_message_at")
+            .select(
+                "id, customer_id, customer_name, customer_email, status, created_at, last_message_at"
+            )
             .single();
 
         if (error) throw error;
 
-        return res.status(201).json({ conversation: data });
+        return res.status(201).json({
+            conversation: data,
+        });
     } catch (error) {
-        console.error("Create chat conversation error:", error.message);
+        console.error(
+            "Create chat conversation error:",
+            error.message
+        );
+
         return res.status(500).json({
             error: "Could not create the conversation.",
         });
     }
 });
 
-// Retrieve conversations for the admin inbox.
+// --------------------------------------------------
+// ADMIN INBOX
+// --------------------------------------------------
+
 router.get("/api/chat/admin/conversations", async (req, res) => {
     try {
         const user = await getUser(req);
 
         if (!isAdmin(user)) {
-            return res.status(403).json({ error: "Forbidden." });
+            return res.status(403).json({
+                error: "Forbidden.",
+            });
         }
 
         const { data, error } = await supabase
             .from("chat_conversations")
-            .select("id, customer_id, customer_name, customer_email, status, created_at, last_message_at")
+            .select(
+                "id, customer_id, customer_name, customer_email, status, created_at, last_message_at"
+            )
             .order("last_message_at", { ascending: false })
             .limit(100);
 
         if (error) throw error;
 
-        return res.json({ conversations: data || [] });
+        return res.json({
+            conversations: data || [],
+        });
     } catch (error) {
-        console.error("Admin chat inbox error:", error.message);
+        console.error(
+            "Admin chat inbox error:",
+            error.message
+        );
+
         return res.status(500).json({
             error: "Could not load conversations.",
         });
     }
 });
 
-// Retrieve message history for an authorized conversation.
-router.get("/api/chat/conversations/:id/messages", async (req, res) => {
-    try {
-        const user = await getUser(req);
+// --------------------------------------------------
+// GET MESSAGE HISTORY
+// --------------------------------------------------
 
-        const conversation = await getAuthorizedConversation(
-            req,
-            req.params.id,
-            user
-        );
+router.get(
+    "/api/chat/conversations/:id/messages",
+    async (req, res) => {
+        try {
+            const user = await getUser(req);
 
-        if (!conversation) {
-            return res.status(404).json({
-                error: "Conversation not found.",
+            const conversation = await getAuthorizedConversation(
+                req,
+                req.params.id,
+                user
+            );
+
+            if (!conversation) {
+                return res.status(404).json({
+                    error: "Conversation not found.",
+                });
+            }
+
+            const { data, error } = await supabase
+                .from("chat_messages")
+                .select(
+                    "id, conversation_id, sender_type, sender_user_id, message, created_at"
+                )
+                .eq("conversation_id", conversation.id)
+                .order("created_at", { ascending: true })
+                .limit(500);
+
+            if (error) throw error;
+
+            return res.json({
+                messages: data || [],
+            });
+        } catch (error) {
+            console.error(
+                "Load chat messages error:",
+                error.message
+            );
+
+            return res.status(500).json({
+                error: "Could not load messages.",
             });
         }
-
-        const { data, error } = await supabase
-            .from("chat_messages")
-            .select("id, conversation_id, sender_type, sender_user_id, message, created_at")
-            .eq("conversation_id", conversation.id)
-            .order("created_at", { ascending: true })
-            .limit(500);
-
-        if (error) throw error;
-
-        return res.json({ messages: data || [] });
-    } catch (error) {
-        console.error("Load chat messages error:", error.message);
-        return res.status(500).json({
-            error: "Could not load messages.",
-        });
     }
-});
+);
 
-// Send a customer message or an admin reply.
-router.post("/api/chat/conversations/:id/messages", async (req, res) => {
-    try {
-        const user = await getUser(req);
-        const message = typeof req.body?.message === "string"
-            ? req.body.message.trim()
-            : "";
+// --------------------------------------------------
+// SEND CUSTOMER MESSAGE OR ADMIN REPLY
+// --------------------------------------------------
 
-        if (!message || message.length > MAX_MESSAGE_LENGTH) {
-            return res.status(400).json({
-                error: `Message must contain 1-${MAX_MESSAGE_LENGTH} characters.`,
+router.post(
+    "/api/chat/conversations/:id/messages",
+    async (req, res) => {
+        try {
+            const user = await getUser(req);
+
+            const message =
+                typeof req.body?.message === "string"
+                    ? req.body.message.trim()
+                    : "";
+
+            if (
+                !message ||
+                message.length > MAX_MESSAGE_LENGTH
+            ) {
+                return res.status(400).json({
+                    error: `Message must contain 1-${MAX_MESSAGE_LENGTH} characters.`,
+                });
+            }
+
+            const conversation = await getAuthorizedConversation(
+                req,
+                req.params.id,
+                user
+            );
+
+            if (!conversation) {
+                return res.status(404).json({
+                    error: "Conversation not found.",
+                });
+            }
+
+            if (conversation.status === "closed") {
+                return res.status(409).json({
+                    error: "This conversation is closed.",
+                });
+            }
+
+            const senderType = isAdmin(user)
+                ? "admin"
+                : "customer";
+
+            const rateKey = user
+                ? `user:${user.id}`
+                : `visitor:${conversation.id}`;
+
+            if (!rateLimit(rateKey, 30, 60_000)) {
+                return res.status(429).json({
+                    error: "You are sending messages too quickly.",
+                });
+            }
+
+            // Save the message first.
+            const { data: newMessage, error: messageError } =
+                await supabase
+                    .from("chat_messages")
+                    .insert({
+                        conversation_id: conversation.id,
+                        sender_type: senderType,
+                        sender_user_id: user?.id || null,
+                        message,
+                    })
+                    .select(
+                        "id, conversation_id, sender_type, sender_user_id, message, created_at"
+                    )
+                    .single();
+
+            if (messageError) throw messageError;
+
+            // Update conversation timestamp.
+            const { error: updateError } = await supabase
+                .from("chat_conversations")
+                .update({
+                    last_message_at: newMessage.created_at,
+                })
+                .eq("id", conversation.id);
+
+            if (updateError) {
+                console.error(
+                    "Update chat timestamp error:",
+                    updateError.message
+                );
+            }
+
+            // Send notifications independently of the HTTP response.
+            // Notification failure cannot make a saved message appear unsent.
+            void notifyChatSubscribers(
+                conversation,
+                newMessage,
+                senderType
+            ).catch((notificationError) => {
+                console.error(
+                    "Chat notification failed:",
+                    notificationError.message
+                );
+            });
+
+            // Return success as soon as the message is saved.
+            return res.status(201).json({
+                message: newMessage,
+            });
+        } catch (error) {
+            console.error(
+                "Send chat message error:",
+                error.message
+            );
+
+            return res.status(500).json({
+                error: "Could not send the message.",
             });
         }
-
-        const conversation = await getAuthorizedConversation(
-            req,
-            req.params.id,
-            user
-        );
-
-        if (!conversation) {
-            return res.status(404).json({
-                error: "Conversation not found.",
-            });
-        }
-
-        if (conversation.status === "closed") {
-            return res.status(409).json({
-                error: "This conversation is closed.",
-            });
-        }
-
-        const senderType = isAdmin(user) ? "admin" : "customer";
-
-        const rateKey = user
-            ? `user:${user.id}`
-            : `visitor:${conversation.id}`;
-
-        if (!rateLimit(rateKey, 30, 60_000)) {
-            return res.status(429).json({
-                error: "You are sending messages too quickly.",
-            });
-        }
-
-        const { data: newMessage, error: messageError } = await supabase
-            .from("chat_messages")
-            .insert({
-                conversation_id: conversation.id,
-                sender_type: senderType,
-                sender_user_id: user?.id || null,
-                message,
-            })
-            .select("id, conversation_id, sender_type, sender_user_id, message, created_at")
-            .single();
-
-        if (messageError) throw messageError;
-
-
-        const { error: updateError } = await supabase
-            .from("chat_conversations")
-            .update({ last_message_at: newMessage.created_at })
-            .eq("id", conversation.id);
-
-        if (updateError) {
-            console.error("Update chat timestamp error:", updateError.message);
-        }
-
-        // Send push notifications without risking the saved message.
-        await notifyChatSubscribers(
-            conversation,
-            newMessage,
-            senderType
-        );
-
-        return res.status(201).json({ message: newMessage });
-
-    } catch (error) {
-        console.error("Send chat message error:", error.message);
-        return res.status(500).json({
-            error: "Could not send the message.",
-        });
     }
-});
+);
 
-
+// --------------------------------------------------
+// PUSH SUBSCRIPTION VALIDATION
+// --------------------------------------------------
 
 function getPushSubscription(body) {
     const subscription = body?.subscription;
@@ -416,8 +527,10 @@ function getPushSubscription(body) {
     };
 }
 
-// Return the public key needed by the browser.
-// Never expose the private VAPID key.
+// --------------------------------------------------
+// PUBLIC VAPID KEY
+// --------------------------------------------------
+
 router.get("/api/chat/push/public-key", (req, res) => {
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
         return res.status(503).json({
@@ -425,64 +538,82 @@ router.get("/api/chat/push/public-key", (req, res) => {
         });
     }
 
-    return res.json({ publicKey: VAPID_PUBLIC_KEY });
+    return res.json({
+        publicKey: VAPID_PUBLIC_KEY,
+    });
 });
 
-// Register a push subscription for the authenticated admin.
-router.post("/api/chat/push/admin-subscription", async (req, res) => {
-    try {
-        const user = await getUser(req);
+// --------------------------------------------------
+// REGISTER ADMIN PUSH SUBSCRIPTION
+// --------------------------------------------------
 
-        if (!isAdmin(user)) {
-            return res.status(403).json({ error: "Forbidden." });
-        }
+router.post(
+    "/api/chat/push/admin-subscription",
+    async (req, res) => {
+        try {
+            const user = await getUser(req);
 
-        if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-            return res.status(503).json({
-                error: "Push notifications are not configured.",
+            if (!isAdmin(user)) {
+                return res.status(403).json({
+                    error: "Forbidden.",
+                });
+            }
+
+            if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+                return res.status(503).json({
+                    error: "Push notifications are not configured.",
+                });
+            }
+
+            const subscription = getPushSubscription(req.body);
+
+            if (!subscription) {
+                return res.status(400).json({
+                    error: "Invalid push subscription.",
+                });
+            }
+
+            const { data, error } = await supabase
+                .from("chat_push_subscriptions")
+                .upsert(
+                    {
+                        ...subscription,
+                        subscriber_type: "admin",
+                        user_id: user.id,
+                        conversation_id: null,
+                        visitor_token_hash: null,
+                        updated_at: new Date().toISOString(),
+                    },
+                    {
+                        onConflict: "endpoint",
+                    }
+                )
+                .select("id")
+                .single();
+
+            if (error) throw error;
+
+            return res.status(201).json({
+                success: true,
+                subscriptionId: data.id,
+            });
+        } catch (error) {
+            console.error(
+                "Register admin push subscription:",
+                error.message
+            );
+
+            return res.status(500).json({
+                error: "Could not register push notifications.",
             });
         }
-
-        const subscription = getPushSubscription(req.body);
-
-        if (!subscription) {
-            return res.status(400).json({
-                error: "Invalid push subscription.",
-            });
-        }
-
-        const { data, error } = await supabase
-            .from("chat_push_subscriptions")
-            .upsert(
-                {
-                    ...subscription,
-                    subscriber_type: "admin",
-                    user_id: user.id,
-                    conversation_id: null,
-                    visitor_token_hash: null,
-                    updated_at: new Date().toISOString(),
-                },
-                { onConflict: "endpoint" }
-            )
-            .select("id")
-            .single();
-
-        if (error) throw error;
-
-        return res.status(201).json({
-            success: true,
-            subscriptionId: data.id,
-        });
-    } catch (error) {
-        console.error("Register admin push subscription:", error.message);
-
-        return res.status(500).json({
-            error: "Could not register push notifications.",
-        });
     }
-});
+);
 
-// Register a customer's subscription for one conversation.
+// --------------------------------------------------
+// REGISTER CUSTOMER PUSH SUBSCRIPTION
+// --------------------------------------------------
+
 router.post(
     "/api/chat/conversations/:id/push-subscription",
     async (req, res) => {
@@ -538,14 +669,21 @@ router.post(
                             : hashVisitorToken(visitorToken),
                         updated_at: new Date().toISOString(),
                     },
-                    { onConflict: "endpoint" }
+                    {
+                        onConflict: "endpoint",
+                    }
                 );
 
             if (error) throw error;
 
-            return res.status(201).json({ success: true });
+            return res.status(201).json({
+                success: true,
+            });
         } catch (error) {
-            console.error("Register customer push subscription:", error.message);
+            console.error(
+                "Register customer push subscription:",
+                error.message
+            );
 
             return res.status(500).json({
                 error: "Could not register push notifications.",
@@ -553,6 +691,5 @@ router.post(
         }
     }
 );
-
 
 module.exports = router;
