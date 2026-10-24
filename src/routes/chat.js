@@ -220,6 +220,67 @@ async function notifyChatSubscribers(conversation, message, senderType) {
 }
 
 // --------------------------------------------------
+// FIND EXISTING CUSTOMER CONVERSATION
+// Does not create a conversation.
+// --------------------------------------------------
+router.get("/api/chat/conversations/current", async (req, res) => {
+    try {
+        const user = await getUser(req);
+
+        if (user && isAdmin(user)) {
+            return res.status(403).json({
+                error: "Admins cannot access customer chat here.",
+            });
+        }
+
+        let query = supabase
+            .from("chat_conversations")
+            .select(
+                "id, customer_id, customer_name, customer_email, status, created_at, last_message_at"
+            );
+
+        if (user) {
+            query = query
+                .eq("customer_id", user.id)
+                .order("last_message_at", { ascending: false })
+                .limit(1);
+        } else {
+            const visitorToken =
+                req.headers["x-chat-visitor-token"] ||
+                req.query?.visitorToken;
+
+            if (!validVisitorToken(visitorToken)) {
+                return res.status(400).json({
+                    error: "A valid anonymous visitor token is required.",
+                });
+            }
+
+            query = query
+                .eq("visitor_token_hash", hashVisitorToken(visitorToken))
+                .order("last_message_at", { ascending: false })
+                .limit(1);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        return res.json({
+            conversation: data?.[0] || null,
+        });
+    } catch (error) {
+        console.error(
+            "Find existing chat conversation error:",
+            error.message
+        );
+
+        return res.status(500).json({
+            error: "Could not check for an existing conversation.",
+        });
+    }
+});
+
+// --------------------------------------------------
 // CREATE CONVERSATION
 // --------------------------------------------------
 
@@ -301,6 +362,7 @@ router.post("/api/chat/conversations", async (req, res) => {
 // ADMIN INBOX
 // --------------------------------------------------
 
+
 router.get("/api/chat/admin/conversations", async (req, res) => {
     try {
         const user = await getUser(req);
@@ -311,7 +373,8 @@ router.get("/api/chat/admin/conversations", async (req, res) => {
             });
         }
 
-        const { data, error } = await supabase
+        // Fetch conversations first.
+        const { data: conversations, error } = await supabase
             .from("chat_conversations")
             .select(
                 "id, customer_id, customer_name, customer_email, status, created_at, last_message_at, admin_unread_count, admin_last_read_at"
@@ -321,20 +384,66 @@ router.get("/api/chat/admin/conversations", async (req, res) => {
 
         if (error) throw error;
 
+        if (!conversations || conversations.length === 0) {
+            return res.json({ conversations: [] });
+        }
+
+        const conversationIds = conversations.map(
+            (conversation) => conversation.id
+        );
+
+        // Fetch recent messages for these conversations.
+        const { data: recentMessages, error: messagesError } =
+            await supabase
+                .from("chat_messages")
+                .select("conversation_id, message, created_at")
+                .in("conversation_id", conversationIds)
+                .order("created_at", { ascending: false })
+                .limit(1000);
+
+        if (messagesError) throw messagesError;
+
+        // Messages are newest first, so keep the first message
+        // encountered for each conversation.
+        const latestMessageByConversation = new Map();
+
+        for (const message of recentMessages || []) {
+            if (!latestMessageByConversation.has(message.conversation_id)) {
+                latestMessageByConversation.set(
+                    message.conversation_id,
+                    message
+                );
+            }
+        }
+
+        // Include the latest message text and its timestamp.
+        const conversationsWithPreview = conversations.map(
+            (conversation) => {
+                const latestMessage =
+                    latestMessageByConversation.get(conversation.id);
+
+                return {
+                    ...conversation,
+                    last_message: latestMessage?.message || null,
+                    last_message_at:
+                        latestMessage?.created_at ||
+                        conversation.last_message_at,
+                };
+            }
+        );
+
         return res.json({
-            conversations: data || [],
+            conversations: conversationsWithPreview,
         });
     } catch (error) {
-        console.error(
-            "Admin chat inbox error:",
-            error.message
-        );
+        console.error("Admin chat inbox error:", error.message);
 
         return res.status(500).json({
             error: "Could not load conversations.",
         });
     }
 });
+
 
 // --------------------------------------------------
 // GET MESSAGE HISTORY
@@ -741,6 +850,89 @@ router.post(
         }
     }
 );
+
+
+router.post("/api/chat/conversations/first-message", async (req, res) => {
+    try {
+        const user = await getUser(req);
+
+        if (user && isAdmin(user)) {
+            return res.status(403).json({ error: "Forbidden." });
+        }
+
+        const message =
+            typeof req.body?.message === "string"
+                ? req.body.message.trim()
+                : "";
+
+        if (!message || message.length > MAX_MESSAGE_LENGTH) {
+            return res.status(400).json({
+                error: `Message must contain 1-${MAX_MESSAGE_LENGTH} characters.`,
+            });
+        }
+
+        const visitorToken =
+            req.body?.visitorToken ||
+            req.headers["x-chat-visitor-token"];
+
+        if (!user && !validVisitorToken(visitorToken)) {
+            return res.status(400).json({
+                error: "A valid visitor token is required.",
+            });
+        }
+
+        const rateKey = user
+            ? `user:${user.id}`
+            : `visitor:${hashVisitorToken(visitorToken)}`;
+
+        if (!rateLimit(rateKey, 30, 60_000)) {
+            return res.status(429).json({
+                error: "You are sending messages too quickly.",
+            });
+        }
+
+        const { data, error } = await supabase.rpc(
+            "create_chat_with_first_message",
+            {
+                p_customer_id: user?.id || null,
+                p_visitor_token_hash: user
+                    ? null
+                    : hashVisitorToken(visitorToken),
+                p_customer_name:
+                    req.body?.name ||
+                    user?.user_metadata?.full_name ||
+                    user?.user_metadata?.name ||
+                    null,
+                p_customer_email: user?.email || req.body?.email || null,
+                p_message: message,
+                p_sender_user_id: user?.id || null,
+            }
+        );
+
+        if (error) throw error;
+
+        const conversation = data.conversation;
+        const newMessage = data.message;
+
+        void notifyChatSubscribers(
+            conversation,
+            newMessage,
+            "customer"
+        );
+
+        return res.status(201).json({
+            conversation,
+            message: newMessage,
+        });
+    } catch (error) {
+        console.error("Send first chat message:", error.message);
+
+        return res.status(500).json({
+            error: "Could not send your message.",
+        });
+    }
+});
+
 
 
 module.exports = router;
