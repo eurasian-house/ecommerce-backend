@@ -21,7 +21,7 @@ router.get("/sitemap.xml", async (req, res) => {
   try {
     const { data: products, error } = await supabase
       .from("products")
-      .select("slug, updated_at")
+      .select("slug, created_at")
       .eq("status", "active")
       .order("updated_at", { ascending: false });
 
@@ -66,7 +66,7 @@ router.get("/sitemap.xml", async (req, res) => {
       xml += `
 <url>
   <loc>${baseUrl}/products/${product.slug}</loc>
-  <lastmod>${new Date(product.updated_at).toISOString()}</lastmod>
+  <lastmod>${new Date(product.created_at).toISOString()}</lastmod>
   <changefreq>weekly</changefreq>
   <priority>0.8</priority>
 </url>`;
