@@ -4,19 +4,6 @@ const supabase = require("../config/supabase");
 const router = express.Router();
 
 
-
-
-
-router.get("/sitemap-test", (req, res) => {
-  res.json({
-    message: "Updated sitemap router is running",
-    category: "/products/hand-knotted-rugs",
-  });
-});
-
-
-
-
 router.get("/sitemap.xml", async (req, res) => {
   try {
     const { data: products, error } = await supabase
