@@ -23,7 +23,7 @@ router.get("/sitemap.xml", async (req, res) => {
       .from("products")
       .select("slug, created_at")
       .eq("status", "active")
-      .order("updated_at", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) throw error;
 
