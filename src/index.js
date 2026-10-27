@@ -6,6 +6,7 @@ const express = require("express");
 
 const corsMiddleware = require("./middleware/cors");
 
+const visitorTrackingRoutes = require("./routes/visitorTracking");
 const chatRoutes = require("./routes/chat");
 
 const testEmailRoute = require("./emails/templates/testEmail");
@@ -35,6 +36,7 @@ app.use("/", razorpayRoutes);
 app.use("/", paypalRoutes);
 app.use("/api/orders", ordersRoute);
 app.use("/", testEmailRoute);
+app.use("/api/visitor-tracking", visitorTrackingRoutes);
 app.use("/", chatRoutes);
 
 app.get("/", (req, res) => {
