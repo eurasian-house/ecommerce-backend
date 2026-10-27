@@ -46,6 +46,64 @@ const getBrowser = (userAgent = "") => {
         return "Safari";
     return "Other";
 };
+const locationCache = new Map();
+
+async function getVisitorLocation(req) {
+    const forwardedFor = req.headers["x-forwarded-for"];
+    const ip = (
+        typeof forwardedFor === "string"
+            ? forwardedFor.split(",")[0].trim()
+            : req.ip || ""
+    ).replace(/^::ffff:/, "");
+
+    // Local and private IP addresses cannot provide public IP geolocation.
+    if (
+        !ip ||
+        ip === "::1" ||
+        ip === "127.0.0.1" ||
+        /^10\./.test(ip) ||
+        /^192\.168\./.test(ip) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+    ) {
+        return { city: null, country: null };
+    }
+
+    const cached = locationCache.get(ip);
+
+    if (cached && Date.now() - cached.time < 24 * 60 * 60 * 1000) {
+        return cached.location;
+    }
+
+    try {
+        const response = await fetch(
+            `https://ipwho.is/${encodeURIComponent(ip)}`,
+            { signal: AbortSignal.timeout(3000) }
+        );
+
+        if (!response.ok) {
+            return { city: null, country: null };
+        }
+
+        const data = await response.json();
+
+        const location = data.success
+            ? {
+                city: data.city || null,
+                country: data.country || null,
+            }
+            : { city: null, country: null };
+
+        locationCache.set(ip, {
+            time: Date.now(),
+            location,
+        });
+
+        return location;
+    } catch (error) {
+        console.error("Visitor geolocation failed:", error.message);
+        return { city: null, country: null };
+    }
+}
 
 router.post("/event", async (req, res) => {
     try {
@@ -101,6 +159,7 @@ router.post("/event", async (req, res) => {
         if (lookupError) throw lookupError;
 
         let activeSessionId = sessionId;
+        const location = await getVisitorLocation(req);
 
         if (
             existing &&
@@ -118,6 +177,9 @@ router.post("/event", async (req, res) => {
             last_seen_at: now.toISOString(),
             ended_at: null,
         };
+
+        if (location.city) sessionPayload.city = location.city;
+        if (location.country) sessionPayload.country = location.country;
 
         if (eventName === "page_view" && !existing) {
             sessionPayload.referrer = cleanText(referrer, 1000);
