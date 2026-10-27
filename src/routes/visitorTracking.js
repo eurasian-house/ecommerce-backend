@@ -1,6 +1,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const supabase = require("../config/supabase");
+const requireAdmin = require("../middleware/requireAdmin");
 
 const router = express.Router();
 
@@ -149,5 +150,97 @@ router.post("/event", async (req, res) => {
         return res.status(500).json({ error: "Unable to record visitor event" });
     }
 });
+
+
+/* ---------------------------------------
+   ADMIN: VISITOR SESSIONS
+--------------------------------------- */
+
+router.get("/admin/sessions", requireAdmin, async (req, res) => {
+    try {
+        const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+        const { data, error } = await supabase
+            .from("visitor_sessions")
+            .select(`
+        visitor_id,
+        session_id,
+        current_page,
+        referrer,
+        device_type,
+        browser,
+        country,
+        city,
+        started_at,
+        last_seen_at,
+        ended_at
+      `)
+            .order("last_seen_at", { ascending: false })
+            .limit(100);
+
+        if (error) throw error;
+
+        const sessions = (data || []).map((session) => ({
+            ...session,
+            is_active:
+                !session.ended_at &&
+                new Date(session.last_seen_at).getTime() >=
+                new Date(cutoff).getTime(),
+        }));
+
+        return res.json({
+            success: true,
+            activeVisitors: new Set(
+                sessions
+                    .filter((session) => session.is_active)
+                    .map((session) => session.visitor_id)
+            ).size,
+            sessions,
+        });
+    } catch (error) {
+        console.error("Visitor sessions error:", error.message);
+
+        return res.status(500).json({
+            error: "Unable to load visitor sessions",
+        });
+    }
+});
+
+
+/* ---------------------------------------
+   ADMIN: VISITOR EVENTS
+--------------------------------------- */
+
+router.get("/admin/events", requireAdmin, async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from("visitor_events")
+            .select(`
+        id,
+        visitor_id,
+        session_id,
+        event_name,
+        page_path,
+        event_data,
+        created_at
+      `)
+            .order("created_at", { ascending: false })
+            .limit(100);
+
+        if (error) throw error;
+
+        return res.json({
+            success: true,
+            events: data || [],
+        });
+    } catch (error) {
+        console.error("Visitor events error:", error.message);
+
+        return res.status(500).json({
+            error: "Unable to load visitor events",
+        });
+    }
+});
+
 
 module.exports = router;
