@@ -243,4 +243,153 @@ router.get("/admin/events", requireAdmin, async (req, res) => {
 });
 
 
+/* ---------------------------------------
+   ADMIN: LAST 24 HOURS ANALYTICS
+--------------------------------------- */
+
+const fetchAllSince = async (table, columns, dateColumn, cutoff) => {
+    const rows = [];
+    const pageSize = 1000;
+    let offset = 0;
+
+    while (true) {
+        const { data, error } = await supabase
+            .from(table)
+            .select(columns)
+            .gte(dateColumn, cutoff)
+            .order(dateColumn, { ascending: true })
+            .range(offset, offset + pageSize - 1);
+
+        if (error) throw error;
+
+        rows.push(...(data || []));
+
+        if (!data || data.length < pageSize) break;
+
+        offset += pageSize;
+    }
+
+    return rows;
+};
+
+router.get("/admin/analytics", requireAdmin, async (req, res) => {
+    try {
+        const cutoff = new Date(
+            Date.now() - 24 * 60 * 60 * 1000
+        ).toISOString();
+
+        // Events recorded during the last 24 hours.
+        const events = await fetchAllSince(
+            "visitor_events",
+            "id, visitor_id, session_id, event_name, page_path, event_data, created_at",
+            "created_at",
+            cutoff
+        );
+
+        // Sessions that started during the last 24 hours.
+        let sessions = await fetchAllSince(
+            "visitor_sessions",
+            "visitor_id, session_id, current_page, referrer, device_type, browser, country, city, started_at, last_seen_at, ended_at",
+            "started_at",
+            cutoff
+        );
+
+        // Also include older sessions with events during this window.
+        // This prevents returning incomplete visitor journeys.
+        const knownSessionIds = new Set(
+            sessions.map((session) => session.session_id)
+        );
+
+        const missingSessionIds = [
+            ...new Set(
+                events
+                    .map((event) => event.session_id)
+                    .filter((id) => id && !knownSessionIds.has(id))
+            ),
+        ];
+
+        for (let i = 0; i < missingSessionIds.length; i += 200) {
+            const batch = missingSessionIds.slice(i, i + 200);
+
+            const { data, error } = await supabase
+                .from("visitor_sessions")
+                .select(
+                    "visitor_id, session_id, current_page, referrer, device_type, browser, country, city, started_at, last_seen_at, ended_at"
+                )
+                .in("session_id", batch);
+
+            if (error) throw error;
+
+            sessions.push(...(data || []));
+        }
+
+        // Only count sessions that overlap the requested 24-hour window.
+        const windowEnd = Date.now();
+
+        sessions = sessions.filter((session) => {
+            const startedAt = new Date(session.started_at).getTime();
+            const lastSeenAt = new Date(session.last_seen_at).getTime();
+
+            return (
+                Number.isFinite(startedAt) &&
+                Number.isFinite(lastSeenAt) &&
+                startedAt <= windowEnd &&
+                lastSeenAt >= new Date(cutoff).getTime()
+            );
+        });
+
+        // Determine whether each visitor had a session before this window.
+        const visitorIds = [
+            ...new Set(sessions.map((session) => session.visitor_id)),
+        ];
+
+        const visitorHistory = {};
+
+        for (let i = 0; i < visitorIds.length; i += 200) {
+            const batch = visitorIds.slice(i, i + 200);
+
+            const { data, error } = await supabase
+                .from("visitor_sessions")
+                .select("visitor_id, started_at")
+                .in("visitor_id", batch)
+                .lt("started_at", cutoff)
+                .limit(10000);
+
+            if (error) throw error;
+
+            for (const row of data || []) {
+                visitorHistory[row.visitor_id] = true;
+            }
+        }
+
+        const enrichedSessions = sessions.map((session) => ({
+            ...session,
+            visitor_type: visitorHistory[session.visitor_id]
+                ? "returning"
+                : "new",
+            is_active:
+                !session.ended_at &&
+                Date.now() - new Date(session.last_seen_at).getTime()
+                <= 5 * 60 * 1000,
+        }));
+
+        return res.json({
+            success: true,
+            window: {
+                from: cutoff,
+                to: new Date(windowEnd).toISOString(),
+            },
+            sessions: enrichedSessions,
+            events,
+        });
+    } catch (error) {
+        console.error("Visitor analytics error:", error.message);
+
+        return res.status(500).json({
+            error: "Unable to load visitor analytics",
+        });
+    }
+});
+
+
 module.exports = router;
